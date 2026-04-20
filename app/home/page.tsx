@@ -1,3 +1,4 @@
+import Footer from "@/components/landing-page/footer";
 import Header from "@/components/landing-page/header";
 import Hero from "@/components/landing-page/hero";
 import SectionTwo from "@/components/landing-page/SectionTwo";
@@ -8,6 +9,7 @@ const Home = () => {
       <Header />
       <Hero />
       <SectionTwo />
+      <Footer />
     </div>
   );
 };

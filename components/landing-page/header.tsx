@@ -2,7 +2,7 @@ import { Button } from "../ui/button";
 
 const Header = () => {
   return (
-    <header className="flex items-center justify-between border-b border-[#131313] py-[17.5px] px-8 w-full">
+    <header className="flex items-center justify-between border-b mb-16 border-[#131313] py-[17.5px] px-8 w-full">
       <h1 className="text-[20px]/[28px] font-bold">FlareWatch 🔥</h1>
       <ul className="flex items-center gap-8">
         <li className="text-[11px]/[16.5px] text-[#737373] font-medium">

@@ -2,7 +2,7 @@ import React from 'react'
 
 const Hero = () => {
   return (
-    <div className='flex items-center '>
+    <div className='flex items-center mb-[160px]'>
         <h1 className='text-[96px]/[96px] newsreader-font font-normal -tracking-[2.4px] '>
             FlareWatch exists because <span className='text-[#FF6B00] italic'>data</span> makes injustice visible.
         </h1>

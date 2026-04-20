@@ -1,9 +1,12 @@
-import Image from "next/image";
+import Hero from "@/components/landing-page/hero";
+import SectionTwo from "@/components/landing-page/SectionTwo";
 
 export default function Home() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <p>Homee</p>
-    </div>
+    <div className="px-24 max-w-7xl mx-auto">
+          <Hero />
+          <SectionTwo />
+          
+        </div>
   );
 }

@@ -5,6 +5,7 @@ import { Cormorant_Garamond, Space_Grotesk } from "next/font/google";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   fetchLiveTelemetry,
   type FlarePoint,
@@ -57,6 +58,50 @@ type SignalCard = {
   value: string;
   detail: string;
   accent: string;
+};
+
+const riskOrder: Record<string, number> = {
+  LOW: 1,
+  MODERATE: 2,
+  HIGH: 3,
+  CRITICAL: 4,
+};
+
+const getRiskAccent = (riskLevel: string) => {
+  switch (riskLevel.toUpperCase()) {
+    case "CRITICAL":
+      return "border-[#D64545] bg-[#2C1515] text-[#FF9999]";
+    case "HIGH":
+      return "border-[#FF6B00] bg-[#23160A] text-[#FFB089]";
+    case "MODERATE":
+      return "border-[#9C6B2F] bg-[#21170D] text-[#F2C27B]";
+    default:
+      return "border-[#3E3E3E] bg-[#121212] text-[#E5E5E5]";
+  }
+};
+
+const getRiskBadgeClass = (riskLevel: string) => {
+  switch (riskLevel.toUpperCase()) {
+    case "CRITICAL":
+      return "border-[#D64545] bg-[#2C1515] text-[#FF9999]";
+    case "HIGH":
+      return "border-[#FF6B00] bg-[#23160A] text-[#FFB089]";
+    case "MODERATE":
+      return "border-[#9C6B2F] bg-[#21170D] text-[#F2C27B]";
+    default:
+      return "border-[#3E3E3E] bg-[#121212] text-[#E5E5E5]";
+  }
+};
+
+const getConfidenceBadgeClass = (confidence: string) => {
+  switch (confidence.toLowerCase()) {
+    case "high":
+      return "border-[#2D8659] bg-[#0D1F16] text-[#8EF0B0]";
+    case "nominal":
+      return "border-[#2A5B8A] bg-[#0D1C2C] text-[#9DC7FF]";
+    default:
+      return "border-[#3E3E3E] bg-[#121212] text-[#E5E5E5]";
+  }
 };
 
 const LiveMap = () => {
@@ -163,6 +208,58 @@ const LiveMap = () => {
     [filteredFlares],
   );
 
+  const snapshotValue = useMemo(
+    () => filteredFlares.reduce((sum, flare) => sum + flare.metrics.est_value_usd, 0),
+    [filteredFlares],
+  );
+
+  const snapshotCo2 = useMemo(
+    () => filteredFlares.reduce((sum, flare) => sum + flare.metrics.co2_tons, 0),
+    [filteredFlares],
+  );
+
+  const averagePlumeRadius = useMemo(() => {
+    if (filteredFlares.length === 0) {
+      return 0;
+    }
+
+    return (
+      filteredFlares.reduce(
+        (sum, flare) => sum + flare.impact_analysis.plume_radius_km,
+        0,
+      ) / filteredFlares.length
+    );
+  }, [filteredFlares]);
+
+  const dominantRisk = useMemo(() => {
+    if (filteredFlares.length === 0) {
+      return "LOW";
+    }
+
+    return [...filteredFlares].sort((a, b) => {
+      const aRank = riskOrder[a.impact_analysis.risk_level.toUpperCase()] ?? 0;
+      const bRank = riskOrder[b.impact_analysis.risk_level.toUpperCase()] ?? 0;
+      return bRank - aRank;
+    })[0]?.impact_analysis.risk_level;
+  }, [filteredFlares]);
+
+  const mostAtRiskFlare = useMemo(() => {
+    if (filteredFlares.length === 0) {
+      return null;
+    }
+
+    return [...filteredFlares].sort((a, b) => {
+      const aRank = riskOrder[a.impact_analysis.risk_level.toUpperCase()] ?? 0;
+      const bRank = riskOrder[b.impact_analysis.risk_level.toUpperCase()] ?? 0;
+
+      if (bRank !== aRank) {
+        return bRank - aRank;
+      }
+
+      return b.impact_analysis.plume_radius_km - a.impact_analysis.plume_radius_km;
+    })[0];
+  }, [filteredFlares]);
+
   const uniqueBlocks = useMemo(
     () => new Set(filteredFlares.map((flare) => flare.attribution.block)).size,
     [filteredFlares],
@@ -195,13 +292,31 @@ const LiveMap = () => {
         accent: "border-[#2A5B8A] bg-[#0D1C2C] text-[#9DC7FF]",
       },
       {
-        label: "Infrastructure",
-        value: `${uniqueBlocks} blocks`,
-        detail: filterMode === "offshore" ? "Offshore watch" : "Onshore watch",
-        accent: "border-[#3E3E3E] bg-[#121212] text-[#E5E5E5]",
+        label: "Value snapshot",
+        value: `$${snapshotValue.toFixed(1)}`,
+        detail: `${snapshotCo2.toFixed(2)} tons CO2e · ${uniqueBlocks} blocks`,
+        accent: "border-[#2D8659] bg-[#0D1F16] text-[#8EF0B0]",
+      },
+      {
+        label: "Impact radius",
+        value: `${averagePlumeRadius.toFixed(1)} km`,
+        detail: (
+          mostAtRiskFlare?.impact_analysis.risk_level ??
+          (filterMode === "offshore" ? "Offshore watch" : "Onshore watch")
+        ).toString(),
+        accent: getRiskAccent(dominantRisk),
       },
     ];
-  }, [filterMode, filteredFlares.length, totalHeat, uniqueBlocks]);
+  }, [
+    averagePlumeRadius,
+    dominantRisk,
+    filterMode,
+    filteredFlares.length,
+    mostAtRiskFlare,
+    snapshotCo2,
+    snapshotValue,
+    totalHeat,
+  ]);
 
   return (
     <section className={`${mapSans.className} w-full px-3 pb-6 md:px-8`}>
@@ -349,15 +464,39 @@ const LiveMap = () => {
               }}
             >
               <div className="rounded-lg border border-[#FF6B00]/50 bg-[#0A0A0A]/95 backdrop-blur-sm p-3 shadow-lg shadow-[#FF6B00]/20">
-                <p className={`${mapSerif.className} text-[16px]/[20px] italic font-bold text-[#FF6B00]`}>
+                <p
+                  className={`${mapSerif.className} text-[16px]/[20px] italic font-bold text-[#FF6B00]`}
+                >
                   {hoveredFlare.attribution.block}
                 </p>
-                <div className="mt-2 space-y-1 text-[11px]/[16px] text-[#E5E5E5]">
+                <div className="mt-2 space-y-2 text-[11px]/[16px] text-[#E5E5E5]">
                   <p className="text-[#737373]">
                     {hoveredFlare.attribution.operator}
                   </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    <Badge
+                      variant="outline"
+                      className={getRiskBadgeClass(
+                        hoveredFlare.impact_analysis.risk_level,
+                      )}
+                    >
+                      {hoveredFlare.impact_analysis.risk_level}
+                    </Badge>
+                    <Badge
+                      variant="outline"
+                      className={getConfidenceBadgeClass(
+                        hoveredFlare.intelligence.confidence,
+                      )}
+                    >
+                      {hoveredFlare.intelligence.confidence}
+                    </Badge>
+                  </div>
                   <p className="font-semibold text-[#FFB089]">
-                    {formatHeat(hoveredFlare.radiant_heat_mscf)}
+                    {formatHeat(hoveredFlare.radiant_heat_mscf)} · $
+                    {hoveredFlare.metrics.est_value_usd.toFixed(2)}
+                  </p>
+                  <p className="text-[#A3A3A3]">
+                    Plume radius: {hoveredFlare.impact_analysis.plume_radius_km} km
                   </p>
                   <p className="text-[10px]/[15px] text-[#525252] mt-1">
                     {hoveredFlare.lat.toFixed(3)}, {hoveredFlare.lng.toFixed(3)}
@@ -387,7 +526,9 @@ const LiveMap = () => {
 
           <div className="mt-4 border-2 border-[#FF6B00]/30 bg-gradient-to-br from-[#E8E8E8] to-[#E0E0E0] p-5 text-black transition-all duration-300">
             <div className="flex items-start justify-between">
-              <p className={`${mapSerif.className} text-[32px]/[36px] italic font-bold`}>
+              <p
+                className={`${mapSerif.className} text-[32px]/[36px] italic font-bold`}
+              >
                 {selectedFlare?.attribution.block ?? "Select a flare"}
               </p>
               <span className="text-[#FF6B00] text-xl">▲</span>
@@ -396,6 +537,29 @@ const LiveMap = () => {
             <p className="mt-2 text-[10px]/[15px] tracking-[1px] text-[#737373]">
               SITE ID: {selectedFlare?.id ?? "N/A"}
             </p>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Badge
+                variant="outline"
+                className={
+                  selectedFlare
+                    ? getRiskBadgeClass(selectedFlare.impact_analysis.risk_level)
+                    : "border-[#3E3E3E] bg-[#121212] text-[#E5E5E5]"
+                }
+              >
+                {selectedFlare?.impact_analysis.risk_level ?? "RISK"}
+              </Badge>
+              <Badge
+                variant="outline"
+                className={
+                  selectedFlare
+                    ? getConfidenceBadgeClass(selectedFlare.intelligence.confidence)
+                    : "border-[#3E3E3E] bg-[#121212] text-[#E5E5E5]"
+                }
+              >
+                {selectedFlare?.intelligence.confidence ?? "CONFIDENCE"}
+              </Badge>
+            </div>
 
             <div className="mt-5 space-y-2 text-[11px]/[16px]">
               <div className="flex items-center justify-between border-b border-[#CECECE] pb-2.5 hover:bg-[#F5F5F5]/50 px-2 -mx-2 transition-colors">
@@ -418,15 +582,50 @@ const LiveMap = () => {
                   {selectedFlare?.attribution.trend ?? "N/A"}
                 </p>
               </div>
-              <div className="flex items-center justify-between hover:bg-[#F5F5F5]/50 px-2 -mx-2 transition-colors py-2.5">
-                <p className="text-[#666666] font-medium">LAT / LNG</p>
+              <div className="flex items-center justify-between border-b border-[#CECECE] pb-2.5 hover:bg-[#F5F5F5]/50 px-2 -mx-2 transition-colors">
+                <p className="text-[#666666] font-medium">EST VALUE</p>
+                <p className="font-semibold text-[#333333]">
+                  {selectedFlare
+                    ? `$${selectedFlare.metrics.est_value_usd.toFixed(2)}`
+                    : "N/A"}
+                </p>
+              </div>
+              <div className="flex items-center justify-between border-b border-[#CECECE] pb-2.5 hover:bg-[#F5F5F5]/50 px-2 -mx-2 transition-colors">
+                <p className="text-[#666666] font-medium">CO2 / PLUME</p>
                 <p className="font-semibold text-[#333333] text-right">
                   {selectedFlare
-                    ? `${selectedFlare.lat.toFixed(3)}, ${selectedFlare.lng.toFixed(3)}`
+                    ? `${selectedFlare.metrics.co2_tons.toFixed(2)} t · ${selectedFlare.impact_analysis.plume_radius_km} km`
+                    : "N/A"}
+                </p>
+              </div>
+              <div className="flex items-center justify-between hover:bg-[#F5F5F5]/50 px-2 -mx-2 transition-colors py-2.5">
+                <p className="text-[#666666] font-medium">DETECTION</p>
+                <p className="font-semibold text-[#333333] text-right">
+                  {selectedFlare
+                    ? `${selectedFlare.intelligence.detection_time} · ${selectedFlare.lat.toFixed(3)}, ${selectedFlare.lng.toFixed(3)}`
                     : "N/A"}
                 </p>
               </div>
             </div>
+
+            {selectedFlare ? (
+              <div className="mt-4 rounded-lg border border-[#D3D3D3] bg-[#F3F3F3] p-3">
+                <p className="text-[10px]/[15px] uppercase tracking-[1.4px] text-[#7A7A7A]">
+                  Impact Notes
+                </p>
+                <div className="mt-2 space-y-1 text-[11px]/[16px] text-[#333333]">
+                  <p>
+                    Plume radius: {selectedFlare.impact_analysis.plume_radius_km} km
+                  </p>
+                  <p>
+                    Health: {selectedFlare.impact_analysis.health_warnings.join(" · ")}
+                  </p>
+                  <p>
+                    Threatened: {selectedFlare.impact_analysis.threatened_areas.join(" · ")}
+                  </p>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <p className="mt-6 text-[12px]/[18px] tracking-[2px] text-[#F5F5F5]">

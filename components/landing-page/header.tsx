@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Button } from "../ui/button";
+import Image from "next/image";
 
 const Header = () => {
   const pathname = usePathname();
@@ -13,9 +14,7 @@ const Header = () => {
   return (
     <header className="flex items-center justify-between border-b mb-16 border-[#131313] py-[17.5px] px-8 w-full">
       <Link href="/">
-        <h1 className="text-[20px]/[28px] font-bold cursor-pointer">
-          FlareWatch 🔥
-        </h1>
+        <Image src="/assets/logo.png" alt="FlareWatch" width={100} height={40} />
       </Link>
       <ul className="flex items-center gap-8">
         <li>

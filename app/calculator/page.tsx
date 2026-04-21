@@ -105,7 +105,9 @@ const Calculator = () => {
         return bRank - aRank;
       }
 
-      return b.impact_analysis.plume_radius_km - a.impact_analysis.plume_radius_km;
+      return (
+        b.impact_analysis.plume_radius_km - a.impact_analysis.plume_radius_km
+      );
     })[0];
   }, [flares]);
 
@@ -115,8 +117,10 @@ const Calculator = () => {
     }
 
     return (
-      flares.reduce((sum, flare) => sum + flare.impact_analysis.plume_radius_km, 0) /
-      flares.length
+      flares.reduce(
+        (sum, flare) => sum + flare.impact_analysis.plume_radius_km,
+        0,
+      ) / flares.length
     );
   }, [flares]);
 
@@ -179,15 +183,25 @@ const Calculator = () => {
             What if we captured this gas?
           </h1>
           <div className="mt-4 flex flex-wrap items-center gap-2">
-            <Badge variant="outline" className="border-[#2D8659] bg-[#0D1F16] text-[#8EF0B0]">
+            <Badge
+              variant="outline"
+              className="border-[#2D8659] bg-[#0D1F16] text-[#8EF0B0]"
+            >
               Snapshot value: ${formatNumber(liveSnapshotValue)}
             </Badge>
-            <Badge variant="outline" className="border-[#2A5B8A] bg-[#0D1C2C] text-[#9DC7FF]">
+            <Badge
+              variant="outline"
+              className="border-[#2A5B8A] bg-[#0D1C2C] text-[#9DC7FF]"
+            >
               Snapshot CO2: {liveSnapshotCo2.toFixed(2)} t
             </Badge>
             <Badge
               variant="outline"
-              className={worstRiskFlare ? getRiskBadgeClass(worstRiskFlare.impact_analysis.risk_level) : "border-[#3E3E3E] bg-[#121212] text-[#E5E5E5]"}
+              className={
+                worstRiskFlare
+                  ? getRiskBadgeClass(worstRiskFlare.impact_analysis.risk_level)
+                  : "border-[#3E3E3E] bg-[#121212] text-[#E5E5E5]"
+              }
             >
               {worstRiskFlare?.impact_analysis.risk_level ?? "LOW"} risk
             </Badge>
@@ -199,7 +213,10 @@ const Calculator = () => {
             the current flare field.
           </p>
           <p className="mt-2 text-[11px]/[16px] text-[#525252]">
-            Source: {meta?.satellite ?? "NASA FIRMS"} · {meta?.timestamp ? new Date(meta.timestamp).toLocaleString() : "live"}
+            Source: {meta?.satellite ?? "NASA FIRMS"} ·{" "}
+            {meta?.timestamp
+              ? new Date(meta.timestamp).toLocaleString()
+              : "live"}
           </p>
         </div>
 
@@ -322,7 +339,9 @@ const Calculator = () => {
             <p className="text-[10px]/[15px] uppercase tracking-[1.5px] text-[#8EF0B0]">
               Live Snapshot Value
             </p>
-            <p className={`${mapSerif.className} mt-2 text-[28px]/[36px] italic font-bold text-[#8EF0B0]`}>
+            <p
+              className={`${mapSerif.className} mt-2 text-[28px]/[36px] italic font-bold text-[#8EF0B0]`}
+            >
               ${formatNumber(liveSnapshotValue)}
             </p>
             <p className="mt-2 text-[10px]/[15px] text-[#8EF0B0]/75">
@@ -334,7 +353,9 @@ const Calculator = () => {
             <p className="text-[10px]/[15px] uppercase tracking-[1.5px] text-[#9DC7FF]">
               Live Snapshot CO2
             </p>
-            <p className={`${mapSerif.className} mt-2 text-[28px]/[36px] italic font-bold text-[#9DC7FF]`}>
+            <p
+              className={`${mapSerif.className} mt-2 text-[28px]/[36px] italic font-bold text-[#9DC7FF]`}
+            >
               {liveSnapshotCo2.toFixed(2)} t
             </p>
             <p className="mt-2 text-[10px]/[15px] text-[#9DC7FF]/75">
@@ -342,11 +363,15 @@ const Calculator = () => {
             </p>
           </div>
 
-          <div className={`border p-5 ${worstRiskFlare ? getRiskBadgeClass(worstRiskFlare.impact_analysis.risk_level) : "border-[#3E3E3E] bg-[#121212] text-[#E5E5E5]"}`}>
+          <div
+            className={`border p-5 ${worstRiskFlare ? getRiskBadgeClass(worstRiskFlare.impact_analysis.risk_level) : "border-[#3E3E3E] bg-[#121212] text-[#E5E5E5]"}`}
+          >
             <p className="text-[10px]/[15px] uppercase tracking-[1.5px] opacity-75">
               Highest Risk Site
             </p>
-            <p className={`${mapSerif.className} mt-2 text-[28px]/[36px] italic font-bold`}>
+            <p
+              className={`${mapSerif.className} mt-2 text-[28px]/[36px] italic font-bold`}
+            >
               {worstRiskFlare?.attribution.block ?? "N/A"}
             </p>
             <p className="mt-2 text-[10px]/[15px] opacity-75">

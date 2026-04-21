@@ -1,4 +1,7 @@
-const TELEMETRY_ENDPOINT = "https://flarewatcher.onrender.com/api/v1/telemetry/live"
+import axios from "axios";
+
+const TELEMETRY_ENDPOINT =
+  "https://flarewatcher.onrender.com/api/v1/telemetry/live";
 
 export interface TelemetryMeta {
   satellite: string;
@@ -44,6 +47,26 @@ export interface FlarePoint {
 export interface TelemetryResponse {
   meta: TelemetryMeta;
   telemetry: FlarePoint[];
+}
+
+export interface FlareOverviewRequest {
+  flare: FlarePoint;
+  snapshot?: {
+    satellite?: string;
+    timestamp?: string;
+    totalSites?: number;
+    totalHeat?: number;
+    filterMode?: "onshore" | "offshore";
+  };
+}
+
+export interface FlareOverviewResponse {
+  overview: string;
+  why_it_matters: string;
+  action: string;
+  risk_summary: string;
+  economic_summary: string;
+  health_summary: string;
 }
 
 const isValidTelemetryResponse = (
@@ -105,19 +128,14 @@ const isValidTelemetryResponse = (
 export const fetchLiveTelemetry = async (
   signal?: AbortSignal,
 ): Promise<TelemetryResponse> => {
-  const response = await fetch(TELEMETRY_ENDPOINT, {
-    method: "GET",
+  const response = await axios.get<unknown>(TELEMETRY_ENDPOINT, {
     signal,
     headers: {
       Accept: "application/json",
     },
   });
 
-  if (!response.ok) {
-    throw new Error(`Telemetry request failed with status ${response.status}`);
-  }
-
-  const json = (await response.json()) as unknown;
+  const json = response.data;
 
   if (!isValidTelemetryResponse(json)) {
     throw new Error("Telemetry response format is invalid");
@@ -137,4 +155,36 @@ export const fetchLiveTelemetry = async (
       impact_analysis: flare.impact_analysis,
     })),
   };
+};
+
+export const fetchFlareOverview = async (
+  payload: FlareOverviewRequest,
+  signal?: AbortSignal,
+): Promise<FlareOverviewResponse> => {
+  const response = await axios.post<Partial<FlareOverviewResponse>>(
+    "/api/ai/flare-overview",
+    payload,
+    {
+    signal,
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    },
+  );
+
+  const json = response.data;
+
+  if (
+    typeof json.overview !== "string" ||
+    typeof json.why_it_matters !== "string" ||
+    typeof json.action !== "string" ||
+    typeof json.risk_summary !== "string" ||
+    typeof json.economic_summary !== "string" ||
+    typeof json.health_summary !== "string"
+  ) {
+    throw new Error("AI overview response format is invalid");
+  }
+
+  return json as FlareOverviewResponse;
 };

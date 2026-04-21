@@ -3,11 +3,15 @@
 import dynamic from "next/dynamic";
 import { Cormorant_Garamond, Space_Grotesk } from "next/font/google";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   fetchLiveTelemetry,
+  fetchFlareOverview,
+  type FlareOverviewResponse,
   type FlarePoint,
   type TelemetryMeta,
 } from "@/services/flare.service";
@@ -104,6 +108,8 @@ const getConfidenceBadgeClass = (confidence: string) => {
   }
 };
 
+const AI_HOVER_DELAY_MS = 450;
+
 const LiveMap = () => {
   const [query, setQuery] = useState("");
   const [filterMode, setFilterMode] = useState<FilterMode>("onshore");
@@ -112,9 +118,16 @@ const LiveMap = () => {
   const [selectedFlare, setSelectedFlare] = useState<FlarePoint | null>(null);
   const [hoveredFlare, setHoveredFlare] = useState<FlarePoint | null>(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+  const [aiOverview, setAiOverview] = useState<FlareOverviewResponse | null>(
+    null,
+  );
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const globeContainerRef = useRef<HTMLDivElement | null>(null);
+  const aiCacheRef = useRef(new Map<string, FlareOverviewResponse>());
+  const aiTimerRef = useRef<number | null>(null);
   const [globeSize, setGlobeSize] = useState({ width: 720, height: 520 });
 
   const loadTelemetry = useCallback(async (signal?: AbortSignal) => {
@@ -177,6 +190,37 @@ const LiveMap = () => {
     return () => observer.disconnect();
   }, []);
 
+  useEffect(() => {
+    if (!hoveredFlare) {
+      return;
+    }
+
+    const handlePointerMove = (event: MouseEvent) => {
+      const target = document.elementFromPoint(event.clientX, event.clientY);
+      const isMarkerHovered = Boolean(
+        target && (target as HTMLElement).closest('[data-flare-marker="true"]'),
+      );
+
+      if (!isMarkerHovered) {
+        setHoveredFlare(null);
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        setHoveredFlare(null);
+      }
+    };
+
+    window.addEventListener("mousemove", handlePointerMove);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("mousemove", handlePointerMove);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [hoveredFlare]);
+
   const filteredFlares = useMemo(() => {
     const trimmedQuery = query.trim().toLowerCase();
 
@@ -208,13 +252,101 @@ const LiveMap = () => {
     [filteredFlares],
   );
 
+  const requestAiOverview = useCallback(
+    async (flare: FlarePoint, signal?: AbortSignal) => {
+      const cached = aiCacheRef.current.get(flare.id);
+
+      if (cached) {
+        setAiOverview(cached);
+        setAiError(null);
+        return;
+      }
+
+      setAiLoading(true);
+      setAiError(null);
+
+      try {
+        const overview = await fetchFlareOverview(
+          {
+            flare,
+            snapshot: {
+              satellite: meta?.satellite,
+              timestamp: meta?.timestamp,
+              totalSites: filteredFlares.length,
+              totalHeat,
+              filterMode,
+            },
+          },
+          signal,
+        );
+
+        aiCacheRef.current.set(flare.id, overview);
+        setAiOverview(overview);
+      } catch (requestError) {
+        if (
+          requestError instanceof Error &&
+          requestError.name === "AbortError"
+        ) {
+          return;
+        }
+
+        setAiError("AI overview unavailable right now.");
+        setAiOverview(null);
+      } finally {
+        setAiLoading(false);
+      }
+    },
+    [
+      filterMode,
+      filteredFlares.length,
+      meta?.satellite,
+      meta?.timestamp,
+      totalHeat,
+    ],
+  );
+
+  useEffect(() => {
+    if (aiTimerRef.current) {
+      window.clearTimeout(aiTimerRef.current);
+      aiTimerRef.current = null;
+    }
+
+    const activeFlare = hoveredFlare;
+
+    if (!activeFlare) {
+      setAiOverview(null);
+      setAiError(null);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    aiTimerRef.current = window.setTimeout(() => {
+      void requestAiOverview(activeFlare, controller.signal);
+    }, AI_HOVER_DELAY_MS);
+
+    return () => {
+      controller.abort();
+
+      if (aiTimerRef.current) {
+        window.clearTimeout(aiTimerRef.current);
+        aiTimerRef.current = null;
+      }
+    };
+  }, [hoveredFlare, requestAiOverview]);
+
   const snapshotValue = useMemo(
-    () => filteredFlares.reduce((sum, flare) => sum + flare.metrics.est_value_usd, 0),
+    () =>
+      filteredFlares.reduce(
+        (sum, flare) => sum + flare.metrics.est_value_usd,
+        0,
+      ),
     [filteredFlares],
   );
 
   const snapshotCo2 = useMemo(
-    () => filteredFlares.reduce((sum, flare) => sum + flare.metrics.co2_tons, 0),
+    () =>
+      filteredFlares.reduce((sum, flare) => sum + flare.metrics.co2_tons, 0),
     [filteredFlares],
   );
 
@@ -256,7 +388,9 @@ const LiveMap = () => {
         return bRank - aRank;
       }
 
-      return b.impact_analysis.plume_radius_km - a.impact_analysis.plume_radius_km;
+      return (
+        b.impact_analysis.plume_radius_km - a.impact_analysis.plume_radius_km
+      );
     })[0];
   }, [filteredFlares]);
 
@@ -380,7 +514,11 @@ const LiveMap = () => {
             </p>
           </div>
 
-          <div ref={globeContainerRef} className="h-130 w-full lg:h-full">
+          <div
+            ref={globeContainerRef}
+            className="h-130 w-full lg:h-full"
+            onMouseLeave={() => setHoveredFlare(null)}
+          >
             <Globe
               width={globeSize.width}
               height={globeSize.height}
@@ -412,6 +550,7 @@ const LiveMap = () => {
                 marker.style.transition =
                   "all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)";
                 marker.style.position = "relative";
+                marker.dataset.flareMarker = "true";
 
                 // Hover effects
                 marker.onmouseenter = (e) => {
@@ -496,13 +635,71 @@ const LiveMap = () => {
                     {hoveredFlare.metrics.est_value_usd.toFixed(2)}
                   </p>
                   <p className="text-[#A3A3A3]">
-                    Plume radius: {hoveredFlare.impact_analysis.plume_radius_km} km
+                    Plume radius: {hoveredFlare.impact_analysis.plume_radius_km}{" "}
+                    km
                   </p>
                   <p className="text-[10px]/[15px] text-[#525252] mt-1">
                     {hoveredFlare.lat.toFixed(3)}, {hoveredFlare.lng.toFixed(3)}
                   </p>
                 </div>
               </div>
+            </div>
+          ) : null}
+
+          {hoveredFlare ? (
+            <div
+              className="pointer-events-none fixed z-50 w-[320px] animate-in fade-in slide-in-from-right-1 duration-200"
+              style={{
+                left: `${tooltipPos.x + 220}px`,
+                top: `${tooltipPos.y - 6}px`,
+              }}
+            >
+              <Card className="border-[#1F1F1F] bg-[#0A0A0A]/95 text-white shadow-2xl shadow-black/50 backdrop-blur">
+                <CardHeader className="px-4 pb-2 pt-3">
+                  <CardTitle className="text-[11px]/[16px] uppercase tracking-[1.4px] text-[#FF6B00]">
+                    AI Sentinel Overview
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2 px-4 pb-4 text-[11px]/[16px]">
+                  {aiLoading ? (
+                    <div className="space-y-2">
+                      <div className="h-3 w-3/4 animate-pulse rounded bg-[#232323]" />
+                      <div className="h-3 w-full animate-pulse rounded bg-[#232323]" />
+                      <div className="h-3 w-2/3 animate-pulse rounded bg-[#232323]" />
+                    </div>
+                  ) : aiOverview ? (
+                    <>
+                      <p className="break-words text-[#E5E5E5]">
+                        {aiOverview.overview}
+                      </p>
+                      <p className="break-words text-[#A3A3A3]">
+                        {aiOverview.why_it_matters}
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        <Badge
+                          variant="outline"
+                          className="max-w-full h-full! whitespace-normal border-[#FF6B00] bg-[#23160A] text-[#FFB089] break-words"
+                        >
+                          {aiOverview.risk_summary}
+                        </Badge>
+                        <Badge
+                          variant="outline"
+                          className="max-w-full h-full! whitespace-normal border-[#2A5B8A] bg-[#0D1C2C] text-[#9DC7FF] break-words"
+                        >
+                          {aiOverview.economic_summary}
+                        </Badge>
+                      </div>
+                      <p className="break-words text-[#8EF0B0]">
+                        Action: {aiOverview.action}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-[#737373]">
+                      {aiError ?? "Analyzing this flare..."}
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
             </div>
           ) : null}
 
@@ -543,7 +740,9 @@ const LiveMap = () => {
                 variant="outline"
                 className={
                   selectedFlare
-                    ? getRiskBadgeClass(selectedFlare.impact_analysis.risk_level)
+                    ? getRiskBadgeClass(
+                        selectedFlare.impact_analysis.risk_level,
+                      )
                     : "border-[#3E3E3E] bg-[#121212] text-[#E5E5E5]"
                 }
               >
@@ -553,7 +752,9 @@ const LiveMap = () => {
                 variant="outline"
                 className={
                   selectedFlare
-                    ? getConfidenceBadgeClass(selectedFlare.intelligence.confidence)
+                    ? getConfidenceBadgeClass(
+                        selectedFlare.intelligence.confidence,
+                      )
                     : "border-[#3E3E3E] bg-[#121212] text-[#E5E5E5]"
                 }
               >
@@ -615,16 +816,30 @@ const LiveMap = () => {
                 </p>
                 <div className="mt-2 space-y-1 text-[11px]/[16px] text-[#333333]">
                   <p>
-                    Plume radius: {selectedFlare.impact_analysis.plume_radius_km} km
+                    Plume radius:{" "}
+                    {selectedFlare.impact_analysis.plume_radius_km} km
                   </p>
                   <p>
-                    Health: {selectedFlare.impact_analysis.health_warnings.join(" · ")}
+                    Health:{" "}
+                    {selectedFlare.impact_analysis.health_warnings.join(" · ")}
                   </p>
                   <p>
-                    Threatened: {selectedFlare.impact_analysis.threatened_areas.join(" · ")}
+                    Threatened:{" "}
+                    {selectedFlare.impact_analysis.threatened_areas.join(" · ")}
                   </p>
                 </div>
               </div>
+            ) : null}
+
+            {selectedFlare ? (
+              <Button
+                asChild
+                className="mt-3 w-full rounded-none bg-[#FF6B00] text-black hover:bg-[#FF6B00]/90"
+              >
+                <Link href={`/live-map/spot/${selectedFlare.id}`}>
+                  View prediction
+                </Link>
+              </Button>
             ) : null}
           </div>
 

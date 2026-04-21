@@ -65,6 +65,8 @@ const LiveMap = () => {
   const [meta, setMeta] = useState<TelemetryMeta | null>(null);
   const [flares, setFlares] = useState<FlarePoint[]>([]);
   const [selectedFlare, setSelectedFlare] = useState<FlarePoint | null>(null);
+  const [hoveredFlare, setHoveredFlare] = useState<FlarePoint | null>(null);
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const globeContainerRef = useRef<HTMLDivElement | null>(null);
@@ -177,11 +179,7 @@ const LiveMap = () => {
             : "ACTIVE";
 
     const heatTone =
-      totalHeat < 500
-        ? "FOCUSED"
-        : totalHeat < 1500
-          ? "ELEVATED"
-          : "INTENSE";
+      totalHeat < 500 ? "FOCUSED" : totalHeat < 1500 ? "ELEVATED" : "INTENSE";
 
     return [
       {
@@ -229,7 +227,7 @@ const LiveMap = () => {
             {sidebarSignals.map((signal) => (
               <div
                 key={signal.label}
-                className={`border px-3 py-3 ${signal.accent}`}
+                className={`border px-3 py-3 transition-all duration-200 cursor-default hover:scale-105 ${signal.accent}`}
               >
                 <p className="text-[10px]/[15px] uppercase tracking-[1.5px] opacity-75">
                   {signal.label}
@@ -271,7 +269,7 @@ const LiveMap = () => {
             <Globe
               width={globeSize.width}
               height={globeSize.height}
-              globeImageUrl="//unpkg.com/three-globe/example/img/earth-night.jpg"
+              globeImageUrl="//unpkg.com/three-globe@2.45.2/example/img/earth-blue-marble.jpg"
               bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
               backgroundColor="rgba(0,0,0,0)"
               htmlElementsData={filteredFlares}
@@ -290,13 +288,43 @@ const LiveMap = () => {
                 marker.style.width = `${markerSize}px`;
                 marker.style.height = `${markerSize}px`;
                 marker.style.borderRadius = "999px";
-                marker.style.border = "0";
+                marker.style.border = "2px solid rgba(255,107,0,0.6)";
                 marker.style.cursor = "pointer";
                 marker.style.background =
                   "radial-gradient(circle, rgba(255,107,0,0.92) 0%, rgba(255,107,0,0.18) 65%, rgba(255,107,0,0) 100%)";
                 marker.style.boxShadow = "0 0 16px rgba(255,107,0,0.78)";
                 marker.style.pointerEvents = "auto";
-                marker.title = `${typedFlare.attribution.block} | ${formatHeat(typedFlare.radiant_heat_mscf)}`;
+                marker.style.transition =
+                  "all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)";
+                marker.style.position = "relative";
+
+                // Hover effects
+                marker.onmouseenter = (e) => {
+                  marker.style.transform = "scale(1.3)";
+                  marker.style.boxShadow =
+                    "0 0 24px rgba(255,107,0,1), inset 0 0 12px rgba(255,107,0,0.4)";
+                  marker.style.borderColor = "rgba(255,107,0,0.9)";
+                  setHoveredFlare(typedFlare);
+                  setTooltipPos({
+                    x: (e as MouseEvent).clientX,
+                    y: (e as MouseEvent).clientY,
+                  });
+                };
+
+                marker.onmousemove = (e) => {
+                  setTooltipPos({
+                    x: (e as MouseEvent).clientX,
+                    y: (e as MouseEvent).clientY,
+                  });
+                };
+
+                marker.onmouseleave = () => {
+                  marker.style.transform = "scale(1)";
+                  marker.style.boxShadow = "0 0 16px rgba(255,107,0,0.78)";
+                  marker.style.borderColor = "rgba(255,107,0,0.6)";
+                  setHoveredFlare(null);
+                };
+
                 marker.onclick = () => setSelectedFlare(typedFlare);
 
                 return marker;
@@ -309,6 +337,33 @@ const LiveMap = () => {
               <p className="text-sm text-[#E5E5E5]">
                 Syncing live telemetry...
               </p>
+            </div>
+          ) : null}
+
+          {hoveredFlare ? (
+            <div
+              className="pointer-events-none fixed z-40 animate-in fade-in duration-200"
+              style={{
+                left: `${tooltipPos.x + 12}px`,
+                top: `${tooltipPos.y + 12}px`,
+              }}
+            >
+              <div className="rounded-lg border border-[#FF6B00]/50 bg-[#0A0A0A]/95 backdrop-blur-sm p-3 shadow-lg shadow-[#FF6B00]/20">
+                <p className={`${mapSerif.className} text-[16px]/[20px] italic font-bold text-[#FF6B00]`}>
+                  {hoveredFlare.attribution.block}
+                </p>
+                <div className="mt-2 space-y-1 text-[11px]/[16px] text-[#E5E5E5]">
+                  <p className="text-[#737373]">
+                    {hoveredFlare.attribution.operator}
+                  </p>
+                  <p className="font-semibold text-[#FFB089]">
+                    {formatHeat(hoveredFlare.radiant_heat_mscf)}
+                  </p>
+                  <p className="text-[10px]/[15px] text-[#525252] mt-1">
+                    {hoveredFlare.lat.toFixed(3)}, {hoveredFlare.lng.toFixed(3)}
+                  </p>
+                </div>
+              </div>
             </div>
           ) : null}
 
@@ -330,42 +385,42 @@ const LiveMap = () => {
             FLARE DETAILS
           </p>
 
-          <div className="mt-4 border border-[#2D2D2D] bg-[#E8E8E8] p-4 text-black">
+          <div className="mt-4 border-2 border-[#FF6B00]/30 bg-gradient-to-br from-[#E8E8E8] to-[#E0E0E0] p-5 text-black transition-all duration-300">
             <div className="flex items-start justify-between">
-              <p className={`${mapSerif.className} text-[32px]/[36px] italic`}>
+              <p className={`${mapSerif.className} text-[32px]/[36px] italic font-bold`}>
                 {selectedFlare?.attribution.block ?? "Select a flare"}
               </p>
-              <span className="text-[#FF6B00]">▲</span>
+              <span className="text-[#FF6B00] text-xl">▲</span>
             </div>
 
             <p className="mt-2 text-[10px]/[15px] tracking-[1px] text-[#737373]">
               SITE ID: {selectedFlare?.id ?? "N/A"}
             </p>
 
-            <div className="mt-5 space-y-3 text-[11px]/[16px]">
-              <div className="flex items-center justify-between border-b border-[#D3D3D3] pb-2">
-                <p className="text-[#7A7A7A]">OPERATOR</p>
-                <p className="font-semibold">
+            <div className="mt-5 space-y-2 text-[11px]/[16px]">
+              <div className="flex items-center justify-between border-b border-[#CECECE] pb-2.5 hover:bg-[#F5F5F5]/50 px-2 -mx-2 transition-colors">
+                <p className="text-[#666666] font-medium">OPERATOR</p>
+                <p className="font-semibold text-[#333333]">
                   {selectedFlare?.attribution.operator ?? "N/A"}
                 </p>
               </div>
-              <div className="flex items-center justify-between border-b border-[#D3D3D3] pb-2">
-                <p className="text-[#7A7A7A]">FLARED NOW</p>
-                <p className="font-semibold">
+              <div className="flex items-center justify-between border-b border-[#CECECE] pb-2.5 hover:bg-[#F5F5F5]/50 px-2 -mx-2 transition-colors">
+                <p className="text-[#666666] font-medium">FLARED NOW</p>
+                <p className="font-semibold text-[#FF6B00]">
                   {selectedFlare
                     ? formatHeat(selectedFlare.radiant_heat_mscf)
                     : "N/A"}
                 </p>
               </div>
-              <div className="flex items-center justify-between border-b border-[#D3D3D3] pb-2">
-                <p className="text-[#7A7A7A]">TREND</p>
-                <p className="font-semibold">
+              <div className="flex items-center justify-between border-b border-[#CECECE] pb-2.5 hover:bg-[#F5F5F5]/50 px-2 -mx-2 transition-colors">
+                <p className="text-[#666666] font-medium">TREND</p>
+                <p className="font-semibold text-[#333333]">
                   {selectedFlare?.attribution.trend ?? "N/A"}
                 </p>
               </div>
-              <div className="flex items-center justify-between">
-                <p className="text-[#7A7A7A]">LAT / LNG</p>
-                <p className="font-semibold">
+              <div className="flex items-center justify-between hover:bg-[#F5F5F5]/50 px-2 -mx-2 transition-colors py-2.5">
+                <p className="text-[#666666] font-medium">LAT / LNG</p>
+                <p className="font-semibold text-[#333333] text-right">
                   {selectedFlare
                     ? `${selectedFlare.lat.toFixed(3)}, ${selectedFlare.lng.toFixed(3)}`
                     : "N/A"}
@@ -378,10 +433,10 @@ const LiveMap = () => {
             DATA FILTERS
           </p>
 
-          <label className="mt-4 flex items-center border border-[#2D2D2D] px-3 py-2">
-            <Search size={14} className="text-[#525252]" />
+          <label className="mt-4 flex items-center border-2 border-[#2D2D2D] bg-[#0A0A0A] px-3 py-2.5 transition-all duration-200 hover:border-[#FF6B00]/50 focus-within:border-[#FF6B00] focus-within:shadow-lg focus-within:shadow-[#FF6B00]/20">
+            <Search size={16} className="text-[#525252]" />
             <input
-              className="ml-2 w-full bg-transparent text-[11px]/[16px] text-[#E5E5E5] outline-none placeholder:text-[#525252]"
+              className="ml-3 w-full bg-transparent text-[11px]/[16px] text-[#E5E5E5] outline-none placeholder:text-[#525252] transition-colors"
               placeholder="Search sites or operators"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
@@ -389,26 +444,26 @@ const LiveMap = () => {
           </label>
 
           <div className="mt-4 grid grid-cols-2 gap-2 text-[11px]/[16px] font-semibold">
-            <Button
-              className={`rounded-none border px-3 py-2 text-xs ${
-                filterMode === "onshore"
-                  ? "border-[#FF6B00] bg-[#FF6B00]/20 text-[#FF6B00]"
-                  : "border-[#2D2D2D] bg-transparent text-[#737373]"
-              }`}
+            <button
               onClick={() => setFilterMode("onshore")}
+              className={`rounded-lg border-2 px-3 py-2.5 text-xs font-bold transition-all duration-200 cursor-pointer ${
+                filterMode === "onshore"
+                  ? "border-[#FF6B00] bg-[#FF6B00]/20 text-[#FF6B00] shadow-lg shadow-[#FF6B00]/30"
+                  : "border-[#2D2D2D] bg-[#0A0A0A] text-[#737373] hover:border-[#3E3E3E] hover:text-[#A3A3A3]"
+              }`}
             >
               ONSHORE
-            </Button>
-            <Button
-              className={`rounded-none border px-3 py-2 text-xs ${
-                filterMode === "offshore"
-                  ? "border-[#FF6B00] bg-[#FF6B00]/20 text-[#FF6B00]"
-                  : "border-[#2D2D2D] bg-transparent text-[#737373]"
-              }`}
+            </button>
+            <button
               onClick={() => setFilterMode("offshore")}
+              className={`rounded-lg border-2 px-3 py-2.5 text-xs font-bold transition-all duration-200 cursor-pointer ${
+                filterMode === "offshore"
+                  ? "border-[#FF6B00] bg-[#FF6B00]/20 text-[#FF6B00] shadow-lg shadow-[#FF6B00]/30"
+                  : "border-[#2D2D2D] bg-[#0A0A0A] text-[#737373] hover:border-[#3E3E3E] hover:text-[#A3A3A3]"
+              }`}
             >
               OFFSHORE
-            </Button>
+            </button>
           </div>
 
           <div className="mt-6 border-t border-[#232323] pt-4">
@@ -416,20 +471,24 @@ const LiveMap = () => {
               TOP 5 FLARES ({filterMode})
             </p>
 
-            <div className="mt-4 space-y-4">
+            <div className="mt-4 space-y-3">
               {topFiveFlares.map((flare) => (
                 <button
                   key={flare.id}
                   type="button"
                   onClick={() => setSelectedFlare(flare)}
-                  className="w-full border-b border-[#1F1F1F] pb-3 text-left"
+                  className={`w-full border-l-4 px-3 py-3 text-left transition-all duration-200 ${
+                    selectedFlare?.id === flare.id
+                      ? "border-l-[#FF6B00] bg-[#FF6B00]/10"
+                      : "border-l-[#2D2D2D] hover:border-l-[#FF6B00]/60 hover:bg-[#0F0F0F]"
+                  }`}
                 >
                   <p
-                    className={`${mapSerif.className} text-[28px]/[32px] italic text-white`}
+                    className={`${mapSerif.className} text-[24px]/[28px] italic font-bold text-white`}
                   >
                     {flare.attribution.block}
                   </p>
-                  <div className="mt-1 flex items-center justify-between">
+                  <div className="mt-1.5 flex items-center justify-between">
                     <p className="text-[10px]/[15px] text-[#737373]">
                       {flare.attribution.operator}
                     </p>

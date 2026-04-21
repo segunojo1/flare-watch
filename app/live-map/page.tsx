@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { Cormorant_Garamond, Space_Grotesk } from "next/font/google";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,17 @@ import {
 } from "@/services/flare.service";
 
 const Globe = dynamic(() => import("react-globe.gl"), { ssr: false });
+
+const mapSans = Space_Grotesk({
+  subsets: ["latin"],
+  weight: ["400", "500", "700"],
+});
+
+const mapSerif = Cormorant_Garamond({
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+  style: ["normal", "italic"],
+});
 
 const REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 
@@ -39,6 +51,13 @@ const formatUtc = (value: string) => {
 };
 
 type FilterMode = "onshore" | "offshore";
+
+type SignalCard = {
+  label: string;
+  value: string;
+  detail: string;
+  accent: string;
+};
 
 const LiveMap = () => {
   const [query, setQuery] = useState("");
@@ -142,8 +161,52 @@ const LiveMap = () => {
     [filteredFlares],
   );
 
+  const uniqueBlocks = useMemo(
+    () => new Set(filteredFlares.map((flare) => flare.attribution.block)).size,
+    [filteredFlares],
+  );
+
+  const sidebarSignals = useMemo<SignalCard[]>(() => {
+    const atmosphericValue =
+      filteredFlares.length === 0
+        ? "CALM"
+        : filteredFlares.length < 25
+          ? "LOW"
+          : filteredFlares.length < 60
+            ? "MODERATE"
+            : "ACTIVE";
+
+    const heatTone =
+      totalHeat < 500
+        ? "FOCUSED"
+        : totalHeat < 1500
+          ? "ELEVATED"
+          : "INTENSE";
+
+    return [
+      {
+        label: "Atmospheric flow",
+        value: atmosphericValue,
+        detail: `${filteredFlares.length} active points in view`,
+        accent: "border-[#FF6B00] bg-[#FF6B00]/10 text-[#FFB089]",
+      },
+      {
+        label: "Flaring volume",
+        value: formatHeat(totalHeat),
+        detail: `Heat profile: ${heatTone}`,
+        accent: "border-[#2A5B8A] bg-[#0D1C2C] text-[#9DC7FF]",
+      },
+      {
+        label: "Infrastructure",
+        value: `${uniqueBlocks} blocks`,
+        detail: filterMode === "offshore" ? "Offshore watch" : "Onshore watch",
+        accent: "border-[#3E3E3E] bg-[#121212] text-[#E5E5E5]",
+      },
+    ];
+  }, [filterMode, filteredFlares.length, totalHeat, uniqueBlocks]);
+
   return (
-    <section className="w-full px-3 pb-6 md:px-8">
+    <section className={`${mapSans.className} w-full px-3 pb-6 md:px-8`}>
       <div className="grid min-h-[calc(100vh-180px)] grid-cols-1 gap-4 border border-[#2D2D2D] bg-[#0A0A0A] lg:grid-cols-[220px_1fr_320px]">
         <aside className="border-b border-[#232323] p-4 lg:border-b-0 lg:border-r lg:border-[#232323]">
           <p className="text-[20px]/[28px] font-bold text-[#FF6B00]">
@@ -159,15 +222,33 @@ const LiveMap = () => {
             <p className="border-l-2 border-[#FF6B00] bg-[#FF6B00]/10 px-3 py-2 font-semibold text-[#FF6B00]">
               THERMAL ANOMALIES
             </p>
-            <p className="px-3 py-2 text-[#737373]">ATMOSPHERIC FLOW</p>
-            <p className="px-3 py-2 text-[#737373]">FLARING VOLUME</p>
-            <p className="px-3 py-2 text-[#737373]">INFRASTRUCTURE</p>
+            <p className="px-3 py-2 text-[#737373]">SYSTEM SIGNALS</p>
           </div>
 
-          <div className="mt-10 space-y-3 text-[10px]/[15px] tracking-[1px] text-[#525252]">
+          <div className="mt-4 space-y-3">
+            {sidebarSignals.map((signal) => (
+              <div
+                key={signal.label}
+                className={`border px-3 py-3 ${signal.accent}`}
+              >
+                <p className="text-[10px]/[15px] uppercase tracking-[1.5px] opacity-75">
+                  {signal.label}
+                </p>
+                <p className="mt-1 text-[18px]/[22px] font-bold">
+                  {signal.value}
+                </p>
+                <p className="mt-1 text-[10px]/[15px] tracking-[1px] opacity-75">
+                  {signal.detail}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-6 space-y-3 text-[10px]/[15px] tracking-[1px] text-[#525252]">
             <p>DATASET: {meta?.dataset ?? "--"}</p>
             <p>SATELLITE: {meta?.satellite ?? "--"}</p>
             <p>REGION: {meta?.region ?? "--"}</p>
+            <p>VIEW MODE: {filterMode.toUpperCase()}</p>
           </div>
         </aside>
 
@@ -178,7 +259,7 @@ const LiveMap = () => {
             <p className="text-[10px]/[15px] tracking-[2px] text-[#A3A3A3]">
               REAL-TIME DETECTION
             </p>
-            <p className="newsreader-font text-[33px]/[40px] italic">
+            <p className={`${mapSerif.className} text-[33px]/[40px] italic`}>
               Gas flared now:
               <span className="ml-2 font-bold text-[#FF6B00]">
                 {formatHeat(totalHeat)}
@@ -186,7 +267,7 @@ const LiveMap = () => {
             </p>
           </div>
 
-          <div ref={globeContainerRef} className="h-[520px] w-full lg:h-full">
+          <div ref={globeContainerRef} className="h-130 w-full lg:h-full">
             <Globe
               width={globeSize.width}
               height={globeSize.height}
@@ -246,6 +327,54 @@ const LiveMap = () => {
 
         <aside className="border-t border-[#232323] p-4 lg:border-l lg:border-t-0 lg:border-[#232323]">
           <p className="text-[12px]/[18px] tracking-[2px] text-[#F5F5F5]">
+            FLARE DETAILS
+          </p>
+
+          <div className="mt-4 border border-[#2D2D2D] bg-[#E8E8E8] p-4 text-black">
+            <div className="flex items-start justify-between">
+              <p className={`${mapSerif.className} text-[32px]/[36px] italic`}>
+                {selectedFlare?.attribution.block ?? "Select a flare"}
+              </p>
+              <span className="text-[#FF6B00]">▲</span>
+            </div>
+
+            <p className="mt-2 text-[10px]/[15px] tracking-[1px] text-[#737373]">
+              SITE ID: {selectedFlare?.id ?? "N/A"}
+            </p>
+
+            <div className="mt-5 space-y-3 text-[11px]/[16px]">
+              <div className="flex items-center justify-between border-b border-[#D3D3D3] pb-2">
+                <p className="text-[#7A7A7A]">OPERATOR</p>
+                <p className="font-semibold">
+                  {selectedFlare?.attribution.operator ?? "N/A"}
+                </p>
+              </div>
+              <div className="flex items-center justify-between border-b border-[#D3D3D3] pb-2">
+                <p className="text-[#7A7A7A]">FLARED NOW</p>
+                <p className="font-semibold">
+                  {selectedFlare
+                    ? formatHeat(selectedFlare.radiant_heat_mscf)
+                    : "N/A"}
+                </p>
+              </div>
+              <div className="flex items-center justify-between border-b border-[#D3D3D3] pb-2">
+                <p className="text-[#7A7A7A]">TREND</p>
+                <p className="font-semibold">
+                  {selectedFlare?.attribution.trend ?? "N/A"}
+                </p>
+              </div>
+              <div className="flex items-center justify-between">
+                <p className="text-[#7A7A7A]">LAT / LNG</p>
+                <p className="font-semibold">
+                  {selectedFlare
+                    ? `${selectedFlare.lat.toFixed(3)}, ${selectedFlare.lng.toFixed(3)}`
+                    : "N/A"}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <p className="mt-6 text-[12px]/[18px] tracking-[2px] text-[#F5F5F5]">
             DATA FILTERS
           </p>
 
@@ -295,7 +424,9 @@ const LiveMap = () => {
                   onClick={() => setSelectedFlare(flare)}
                   className="w-full border-b border-[#1F1F1F] pb-3 text-left"
                 >
-                  <p className="newsreader-font text-[28px]/[32px] italic text-white">
+                  <p
+                    className={`${mapSerif.className} text-[28px]/[32px] italic text-white`}
+                  >
                     {flare.attribution.block}
                   </p>
                   <div className="mt-1 flex items-center justify-between">
@@ -308,50 +439,6 @@ const LiveMap = () => {
                   </div>
                 </button>
               ))}
-            </div>
-          </div>
-
-          <div className="mt-6 border border-[#2D2D2D] bg-[#E8E8E8] p-4 text-black">
-            <div className="flex items-start justify-between">
-              <p className="newsreader-font text-[32px]/[36px] italic">
-                {selectedFlare?.attribution.block ?? "Select a flare"}
-              </p>
-              <span className="text-[#FF6B00]">▲</span>
-            </div>
-
-            <p className="mt-2 text-[10px]/[15px] tracking-[1px] text-[#737373]">
-              SITE ID: {selectedFlare?.id ?? "N/A"}
-            </p>
-
-            <div className="mt-5 space-y-3 text-[11px]/[16px]">
-              <div className="flex items-center justify-between border-b border-[#D3D3D3] pb-2">
-                <p className="text-[#7A7A7A]">OPERATOR</p>
-                <p className="font-semibold">
-                  {selectedFlare?.attribution.operator ?? "N/A"}
-                </p>
-              </div>
-              <div className="flex items-center justify-between border-b border-[#D3D3D3] pb-2">
-                <p className="text-[#7A7A7A]">FLARED NOW</p>
-                <p className="font-semibold">
-                  {selectedFlare
-                    ? formatHeat(selectedFlare.radiant_heat_mscf)
-                    : "N/A"}
-                </p>
-              </div>
-              <div className="flex items-center justify-between border-b border-[#D3D3D3] pb-2">
-                <p className="text-[#7A7A7A]">TREND</p>
-                <p className="font-semibold">
-                  {selectedFlare?.attribution.trend ?? "N/A"}
-                </p>
-              </div>
-              <div className="flex items-center justify-between">
-                <p className="text-[#7A7A7A]">LAT / LNG</p>
-                <p className="font-semibold">
-                  {selectedFlare
-                    ? `${selectedFlare.lat.toFixed(3)}, ${selectedFlare.lng.toFixed(3)}`
-                    : "N/A"}
-                </p>
-              </div>
             </div>
           </div>
 

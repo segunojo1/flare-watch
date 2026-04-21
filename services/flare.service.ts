@@ -1,4 +1,4 @@
-const TELEMETRY_ENDPOINT = process.env.NEXT_PUBLIC_API_URL
+const TELEMETRY_ENDPOINT = "https://flarewatcher.onrender.com/api/v1/telemetry/live"
 
 export interface TelemetryMeta {
   satellite: string;

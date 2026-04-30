@@ -1,4 +1,5 @@
 import axios from "axios";
+import fallbackTelemetry from "@/lib/flarewatch.json";
 
 const TELEMETRY_ENDPOINT =
   "https://flarewatcher.onrender.com/api/v1/telemetry/live";
@@ -125,36 +126,52 @@ const isValidTelemetryResponse = (
   });
 };
 
+const normalizeTelemetryResponse = (
+  payload: TelemetryResponse,
+): TelemetryResponse => ({
+  ...payload,
+  telemetry: payload.telemetry.map((flare) => ({
+    ...flare,
+    attribution: {
+      block: flare.attribution.block,
+      operator: flare.attribution.operator,
+      trend: flare.attribution.trend ?? "N/A",
+    },
+    metrics: flare.metrics,
+    intelligence: flare.intelligence,
+    impact_analysis: flare.impact_analysis,
+  })),
+});
+
 export const fetchLiveTelemetry = async (
   signal?: AbortSignal,
 ): Promise<TelemetryResponse> => {
-  const response = await axios.get<unknown>(TELEMETRY_ENDPOINT, {
-    signal,
-    headers: {
-      Accept: "application/json",
-    },
-  });
-
-  const json = response.data;
-
-  if (!isValidTelemetryResponse(json)) {
-    throw new Error("Telemetry response format is invalid");
-  }
-
-  return {
-    ...json,
-    telemetry: json.telemetry.map((flare) => ({
-      ...flare,
-      attribution: {
-        block: flare.attribution.block,
-        operator: flare.attribution.operator,
-        trend: flare.attribution.trend ?? "N/A",
+  try {
+    const response = await axios.get<unknown>(TELEMETRY_ENDPOINT, {
+      signal,
+      headers: {
+        Accept: "application/json",
       },
-      metrics: flare.metrics,
-      intelligence: flare.intelligence,
-      impact_analysis: flare.impact_analysis,
-    })),
-  };
+    });
+
+    const json = response.data;
+
+    if (!isValidTelemetryResponse(json)) {
+      throw new Error("Telemetry response format is invalid");
+    }
+
+    return normalizeTelemetryResponse(json);
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw error;
+    }
+
+    if (!isValidTelemetryResponse(fallbackTelemetry)) {
+      throw new Error("Fallback telemetry data format is invalid");
+    }
+
+    return normalizeTelemetryResponse(fallbackTelemetry);
+  }
 };
 
 export const fetchFlareOverview = async (
